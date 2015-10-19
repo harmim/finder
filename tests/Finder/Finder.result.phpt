@@ -25,5 +25,5 @@ Assert::same(__FILE__, (string) $arr[__FILE__]);
 $finder = Finder::findFiles('*');
 
 Assert::exception(function () use ($finder) {
-	$finder->getIterator();
+	$finder->getIterator()->rewind();
 }, Nette\InvalidStateException::class, 'Call in() or from() to specify directory to search.');

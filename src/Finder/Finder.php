@@ -180,72 +180,52 @@ class Finder extends Nette\Object implements \IteratorAggregate, \Countable
 
 	/**
 	 * Returns iterator.
-	 * @return \Iterator
+	 * @return \Generator
 	 */
 	public function getIterator()
 	{
 		if (!$this->paths) {
 			throw new Nette\InvalidStateException('Call in() or from() to specify directory to search.');
-
-		} elseif (count($this->paths) === 1) {
-			return $this->buildIterator($this->paths[0]);
-
-		} else {
-			$iterator = new \AppendIterator();
-			$iterator->append($workaround = new \ArrayIterator(['workaround PHP bugs #49104, #63077']));
-			foreach ($this->paths as $path) {
-				$iterator->append($this->buildIterator($path));
-			}
-			unset($workaround[0]);
-			return $iterator;
 		}
-	}
 
+		foreach ($this->paths as $path) {
+			$iterator = new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::FOLLOW_SYMLINKS);
 
-	/**
-	 * Returns per-path iterator.
-	 * @param  string
-	 * @return \Iterator
-	 */
-	private function buildIterator($path)
-	{
-		$iterator = new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::FOLLOW_SYMLINKS);
-
-		if ($this->exclude) {
-			$iterator = new \RecursiveCallbackFilterIterator($iterator, function ($foo, $bar, RecursiveDirectoryIterator $file) {
-				if (!$file->isDot() && !$file->isFile()) {
-					foreach ($this->exclude as $filter) {
-						if (!call_user_func($filter, $file)) {
-							return FALSE;
+			if ($this->exclude) {
+				$iterator = new \RecursiveCallbackFilterIterator($iterator, function ($foo, $bar, RecursiveDirectoryIterator $file) {
+					if (!$file->isDot() && !$file->isFile()) {
+						foreach ($this->exclude as $filter) {
+							if (!call_user_func($filter, $file)) {
+								return FALSE;
+							}
 						}
 					}
-				}
-				return TRUE;
-			});
-		}
-
-		if ($this->maxDepth !== 0) {
-			$iterator = new RecursiveIteratorIterator($iterator, $this->order);
-			$iterator->setMaxDepth($this->maxDepth);
-		}
-
-		$iterator = new \CallbackFilterIterator($iterator, function ($foo, $bar, \Iterator $file) {
-			while ($file instanceof \OuterIterator) {
-				$file = $file->getInnerIterator();
+					return TRUE;
+				});
 			}
 
-			foreach ($this->groups as $filters) {
-				foreach ($filters as $filter) {
-					if (!call_user_func($filter, $file)) {
-						continue 2;
+			if ($this->maxDepth !== 0) {
+				$iterator = new RecursiveIteratorIterator($iterator, $this->order);
+				$iterator->setMaxDepth($this->maxDepth);
+			}
+
+			foreach ($iterator as $key => $file) {
+				$inner = $iterator;
+				while ($inner instanceof \OuterIterator) {
+					$inner = $inner->getInnerIterator();
+				}
+
+				foreach ($this->groups as $filters) {
+					foreach ($filters as $filter) {
+						if (!call_user_func($filter, $inner)) {
+							continue 2;
+						}
 					}
+					yield $key => $file;
+					break;
 				}
-				return TRUE;
 			}
-			return FALSE;
-		});
-
-		return $iterator;
+		}
 	}
 
 
